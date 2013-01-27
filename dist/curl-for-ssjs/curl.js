@@ -16,6 +16,7 @@
 		version = '0.7.3',
 		curlName = 'curl',
 		defineName = 'define',
+		runModuleAttr = 'data-curl-run',
 		userCfg,
 		prevCurl,
 		prevDefine,
@@ -49,8 +50,8 @@
 		dontAddExtRx = /\?|\.js\b/,
 		absUrlRx = /^\/|^[^:]+:\/\//,
 		findDotsRx = /(\.)(\.?)(?:$|\/([^\.\/]+.*)?)/g,
-		removeCommentsRx = /\/\*[\s\S]*?\*\/|(?:[^\\])\/\/.*?[\n\r]/g,
-		findRValueRequiresRx = /require\s*\(\s*["']([^"']+)["']\s*\)|(?:[^\\]?)(["'])/g,
+		removeCommentsRx = /\/\*[\s\S]*?\*\/|\/\/.*?[\n\r]/g,
+		findRValueRequiresRx = /require\s*\(\s*(["'])(.*?[^\\])\1\s*\)|[^\\]?(["'])/g,
 		cjsGetters,
 		core;
 
@@ -202,7 +203,7 @@
 	}
 
 	function isPromise (o) {
-		return o instanceof Promise;
+		return o instanceof Promise || o instanceof CurlApi;
 	}
 
 	function when (promiseOrValue, callback, errback, progback) {
@@ -637,18 +638,6 @@
 
 		},
 
-		checkPreloads: function (cfg) {
-			var preloads;
-			preloads = cfg && cfg['preloads'];
-			if (preloads && preloads.length > 0) {
-				// chain from previous preload, if any.
-				when(preload, function () {
-					preload = core.getDeps(core.createContext(userCfg, undef, preloads, true));
-				});
-			}
-
-		},
-
 		resolvePathInfo: function (absId, cfg) {
 			// searches through the configured path mappings and packages
 			var pathMap, pathInfo, path, pkgCfg;
@@ -744,8 +733,8 @@
 					 defFunc :
 					 defFunc.toSource ? defFunc.toSource() : defFunc.toString();
 			// remove comments, then look for require() or quotes
-			source.replace(removeCommentsRx, '').replace(findRValueRequiresRx, function (m, id, qq) {
-				// if we encounter a quote
+			source.replace(removeCommentsRx, '').replace(findRValueRequiresRx, function (m, rq, id, qq) {
+				// if we encounter a string in the source, don't look for require()
 				if (qq) {
 					currQuote = currQuote == qq ? undef : currQuote;
 				}
@@ -978,28 +967,37 @@
 			isPreload = parentDef.isPreload;
 			cfg = parentDef.config || userCfg; // is this fallback necessary?
 
-			// check for plugin loaderId
-			// TODO: this runs pluginParts() twice. how to run it just once?
-			parts = pluginParts(toAbsId(depName));
-			resId = parts.resourceId;
-			// get id of first resource to load (which could be a plugin)
-			mainId = parts.pluginId || resId;
-			pathInfo = core.resolvePathInfo(mainId, cfg);
-
-			// get custom module loader from package config if not a plugin
-			if (parts.pluginId) {
-				loaderId = mainId;
+			if (depName in cache) {
+				// module already exists in cache
+				// TODO: isn't there a chance that a plugin will normalize an id to look like an un-normalized one?
+				mainId = depName;
 			}
 			else {
-				// TODO: move config.moduleLoader to config.transform
-				loaderId = pathInfo.config['moduleLoader'] || pathInfo.config.moduleLoader;
-				if (loaderId) {
-					// TODO: allow transforms to have relative module ids?
-					// (we could do this by returning package location from
-					// resolvePathInfo. why not return all package info?)
-					resId = mainId;
-					mainId = loaderId;
-					pathInfo = core.resolvePathInfo(loaderId, cfg);
+				// check for plugin loaderId
+				// TODO: this runs pluginParts() twice. how to run it just once?
+				parts = pluginParts(toAbsId(depName));
+				resId = parts.resourceId;
+				// get id of first resource to load (which could be a plugin)
+				mainId = parts.pluginId || resId;
+				pathInfo = core.resolvePathInfo(mainId, cfg);
+			}
+
+			// get custom module loader from package config if not a plugin
+			if (parts) {
+				if (parts.pluginId) {
+					loaderId = mainId;
+				}
+				else {
+					// TODO: move config.moduleLoader to config.transform
+					loaderId = pathInfo.config['moduleLoader'] || pathInfo.config.moduleLoader;
+					if (loaderId) {
+						// TODO: allow transforms to have relative module ids?
+						// (we could do this by returning package location from
+						// resolvePathInfo. why not return all package info?)
+						resId = mainId;
+						mainId = loaderId;
+						pathInfo = core.resolvePathInfo(loaderId, cfg);
+					}
 				}
 			}
 
@@ -1070,8 +1068,8 @@
 						// but to be compatible with AMD spec, we have to
 						// piggy-back on the callback function parameter:
 						var loaded = function (res) {
-							normalizedDef.resolve(res);
 							if (!dynamic) cache[fullId] = res;
+							normalizedDef.resolve(res);
 						};
 						loaded['resolve'] = loaded;
 						loaded['reject'] = loaded['error'] = normalizedDef.reject;
@@ -1110,6 +1108,24 @@
 				}
 			}
 			return def;
+		},
+
+		findScript: function (predicate) {
+			var i = 0, script;
+			while ((script = doc.scripts[i++])) {
+				if (predicate(script)) return script;
+			}
+		},
+
+		extractDataAttrConfig: function (cfg) {
+			var script;
+			script = core.findScript(function (script) {
+				// TODO: extract baseUrl, too?
+				return (cfg.main = script.getAttribute(runModuleAttr));
+			});
+			// removeAttribute is wonky (in IE6?) but this works
+			if (script) script.setAttribute(runModuleAttr, '');
+			return cfg;
 		}
 
 	};
@@ -1136,23 +1152,20 @@
 			core.setApi(cfg);
 			userCfg = core.config(cfg);
 			// check for preloads
-			core.checkPreloads(cfg);
+			if ('preloads' in cfg) {
+				preload = new CurlApi(cfg['preloads'], undef, undef, preload, true);
+			}
 			// check for main module(s)
 			if ('main' in cfg) {
-				// start in next turn to wait for other modules in current file
-				setTimeout(function () {
-					var ctx;
-					ctx = core.createContext(userCfg, undef, [].concat(cfg['main']));
-					core.getDeps(ctx);
-				}, 0);
+				new CurlApi(cfg['main'])
 			}
 		}
 	}
 
 	// thanks to Joop Ringelberg for helping troubleshoot the API
-	function CurlApi (ids, callback, errback, waitFor) {
+	function CurlApi (ids, callback, errback, waitFor, isPreload) {
 		var then, ctx;
-		ctx = core.createContext(userCfg, undef, [].concat(ids));
+		ctx = core.createContext(userCfg, undef, [].concat(ids), isPreload);
 		this['then'] = then = function (resolved, rejected) {
 			when(ctx,
 				// return the dependencies as arguments, not an array
@@ -1172,7 +1185,12 @@
 		};
 		this['config'] = _config;
 		if (callback || errback) then(callback, errback);
-		when(waitFor, function () { core.getDeps(ctx); });
+		// ensure next-turn for builds
+		setTimeout(function () {
+			when(isPreload || preload, function () {
+				when(waitFor, function () { core.getDeps(ctx); });
+			});
+		}, 0);
 	}
 
 	_curl['version'] = version;
@@ -1232,18 +1250,23 @@
 		pathRx: /$^/
 	};
 
+	// look for "data-curl-run" directive, and override config
+	userCfg = core.extractDataAttrConfig(userCfg);
+
 	// handle pre-existing global
 	prevCurl = global[curlName];
 	prevDefine = global[defineName];
-	if (!prevCurl || isType(prevCurl, 'Function')) {
-		// set default api
-		core.setApi();
-	}
-	else {
+
+	// only run config if there is something to config (perf saver?)
+	if (isType(prevCurl, 'Object') || userCfg.main) {
 		// remove global curl object
 		global[curlName] = undef; // can't use delete in IE 6-8
 		// configure curl
-		_config(prevCurl);
+		_config(prevCurl || userCfg);
+	}
+	else {
+		// set default api
+		core.setApi();
 	}
 
 	// allow curl to be a dependency
@@ -1282,52 +1305,13 @@ define('curl/loader/cjsm11', function () {
 
 	var head, insertBeforeEl /*, findRequiresRx, myId*/;
 
-//	findRequiresRx = /require\s*\(\s*['"](\w+)['"]\s*\)/,
-
-//	function nextId (index) {
-//		var varname = '', part;
-//		do {
-//			part = index % 26;
-//			varname += String.fromCharCode(part + 65);
-//			index -= part;
-//		}
-//		while (index > 0);
-//		return 'curl$' + varname;
-//	}
-
-//	/**
-//	 * @description Finds the require() instances in the source text of a cjs
-//	 * 	 module and collects them. If removeRequires is true, it also replaces
-//	 * 	 them with a unique variable name. All unique require()'d module ids
-//	 * 	 are assigned a unique variable name to be used in the define(deps)
-//	 * 	 that will be constructed to wrap the cjs module.
-//	 * @param source - source code of cjs module
-//	 * @param moduleIds - hashMap (object) to receive pairs of moduleId /
-//	 *   unique variable name
-//	 * @param removeRequires - if truthy, replaces all require() instances with
-//	 *   a unique variable
-//	 * @return - source code of cjs module, possibly with require()s replaced
-//	 */
-//	function parseDepModuleIds (source, moduleIds, removeRequires) {
-//		var index = 0;
-//		// fast parse
-//		source = source.replace(findRequiresRx, function (match, id) {
-//			if (!moduleIds[id]) {
-//				moduleIds[id] = nextId(index++);
-//				moduleIds.push(id);
-//			}
-//			return removeRequires ? moduleIds[id] : match;
-//		});
-//		return source;
-//	}
-
 	head = document && (document['head'] || document.getElementsByTagName('head')[0]);
 	// to keep IE from crying, we need to put scripts before any
 	// <base> elements, but after any <meta>. this should do it:
 	insertBeforeEl = head && head.getElementsByTagName('base')[0] || null;
 
 	function wrapSource (source, resourceId, fullUrl) {
-		var sourceUrl = fullUrl ? '////@ sourceURL=' + fullUrl.replace(/\s/g, '%20') + '.js' : '';
+		var sourceUrl = fullUrl ? '/*\n////@ sourceURL=' + fullUrl.replace(/\s/g, '%20') + '.js\n*/' : '';
 		return "define('" + resourceId + "'," +
 			"['require','exports','module'],function(require,exports,module){" +
 			source + "\n});\n" + sourceUrl + "\n";
@@ -1348,38 +1332,40 @@ define('curl/loader/cjsm11', function () {
 		head.insertBefore(el, insertBeforeEl);
 	}
 
-	return {
-		'load': function (resourceId, require, callback, config) {
-			// TODO: extract xhr from text! plugin and use that instead (after we upgrade to cram.js)
-			require(['text!' + resourceId + '.js', 'curl/_privileged'], function (source, priv) {
-				var moduleMap;
+	wrapSource['load'] = function (resourceId, require, callback, config) {
+		// TODO: extract xhr from text! plugin and use that instead (after we upgrade to cram.js)
+		require(['text!' + resourceId + '.js', 'curl/_privileged'], function (source, priv) {
+			var moduleMap;
 
-				// find (and replace?) dependencies
-				moduleMap = priv['core'].extractCjsDeps(source);
-				//source = parseDepModuleIds(source, moduleMap, config.replaceRequires);
+			// find (and replace?) dependencies
+			moduleMap = priv['core'].extractCjsDeps(source);
+			//source = parseDepModuleIds(source, moduleMap, config.replaceRequires);
 
-				// get deps
-				require(moduleMap, function () {
+			// get deps
+			require(moduleMap, function () {
 
-					// wrap source in a define
-					source = wrapSource(source, resourceId, config['injectSourceUrl'] !== false && require.toUrl(resourceId));
+				// wrap source in a define
+				source = wrapSource(source, resourceId, config['injectSourceUrl'] !== false && require.toUrl(resourceId));
 
-					if (config['injectScript']) {
-						injectScript(source);
-					}
-					else {
-						//eval(source);
-						globalEval(source);
-					}
+				if (config['injectScript']) {
+					injectScript(source);
+				}
+				else {
+					//eval(source);
+					globalEval(source);
+				}
 
-					// call callback now that the module is defined
-					callback(require(resourceId));
+				// call callback now that the module is defined
+				callback(require(resourceId));
 
-				}, callback['error'] || function (ex) { throw ex; });
+			}, callback['error'] || function (ex) { throw ex; });
 
-			});
-		}
+		});
 	};
+
+	wrapSource['cramPlugin'] = '../cram/cjsm11';
+
+	return wrapSource;
 
 });
 
