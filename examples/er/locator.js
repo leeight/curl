@@ -14,7 +14,10 @@
  * @description
  * er.locator
  **/
-define(['er/base', 'er/config', 'er/pdc'], function(base, config, pdc){
+define(['er/base', 'er/config', 'er/pdc', 'require'],
+function(base, config, pdc, require){
+var FLAGS_enable_hm = false;
+
 /**
  * Hash定位器
  * <pre>
@@ -71,7 +74,7 @@ locator.getLocation = function() {
     //   视觉上相当于decodeURI，
     //   但是读取location.hash的值相当于decodeURIComponent
     // 所以需要从location.href里取出hash值
-    if (er.base.firefox > 0) {
+    if (base.firefox > 0) {
         hash = document.location.href.match(/#(.*)$/);
         hash && (hash = hash[1]);
     } else {
@@ -141,25 +144,25 @@ locator.redirect = function(loc, preventDefault, type) {
     this.onredirect();
 
     // ie下使用iframe保存历史
-    if (er.base.ie) {
+    if (base.ie) {
         if (type === 'assign') {
-            er.base.g(er.config.CONTROL_IFRAME_ID).src =
-              er.config.CONTROL_IFRAME_URL + '?' + loc;
+            base.g(config.CONTROL_IFRAME_ID).src =
+              config.CONTROL_IFRAME_URL + '?' + loc;
         } else if (type === 'replace') {
-            er.base.g(er.config.CONTROL_IFRAME_ID).contentWindow
+            base.g(config.CONTROL_IFRAME_ID).contentWindow
                 .document.location.replace(
-                    er.config.CONTROL_IFRAME_URL + '?' + loc
+                    config.CONTROL_IFRAME_URL + '?' + loc
                 );
         }
     }
     if (!preventDefault) {
         if (FLAGS_enable_hm) {
-            er.hm.push(['_setReferrerOverride', referer]);
+            pdc.hm.push(['_setReferrerOverride', referer]);
         }
-        er.controller.forward(this.currentPath,
+        require('er/controller').forward(this.currentPath,
           this.parseQuery(this.currentQuery), this.referer);
         if (FLAGS_enable_hm) {
-            er.hm.push(['_trackPageview', this.currentPath + 
+            pdc.hm.push(['_trackPageview', this.currentPath + 
                 (this.currentQuery ? '?' + this.currentQuery : '')]);
         }
     }
@@ -237,7 +240,7 @@ locator.parseQuery = function(opt_query) {
         value = item[1];
         if (key) {
             // firefox在读取hash时，会自动把encode的uri片段进行decode
-            if (!er.base.firefox) {
+            if (!base.firefox) {
                 value = decodeURIComponent(value);
             }
 
@@ -285,13 +288,13 @@ locator.init = function() {
         }
     }
 
-    if (er.base.ie) {
+    if (base.ie) {
         var iframe = document.createElement('iframe'),
             style = iframe.style,
             size = 200,
             pos = '-1000px';
 
-        iframe.id = er.config.CONTROL_IFRAME_ID;
+        iframe.id = config.CONTROL_IFRAME_ID;
         iframe.width = size;
         iframe.height = size;
         style.position = 'absolute';

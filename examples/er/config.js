@@ -14,7 +14,7 @@
  * @description
  * er.config
  **/
-define(function(){
+define(["js!tangram"], function(){
 
 /**
  * @enum {string}

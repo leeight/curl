@@ -99,15 +99,12 @@ exports.ie = 0;
  */
 exports.firefox = 0;
 
-(function() {
 var match = null;
 if (match = /msie (\d+\.\d)/i.exec(navigator.userAgent)) {
   exports.ie = parseFloat(match[1]);
 } else if (match = /firefox\/(\d+\.\d)/i.exec(navigator.userAgent)) {
   exports.firefox = parseFloat(match[1]);
 }
-})();
-
 
 
 

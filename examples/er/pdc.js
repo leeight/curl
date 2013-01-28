@@ -15,7 +15,7 @@
  * @see http://fe.baidu.com/doc/wpo/pms/how_to_start.text
  *
  **/
-define(function(require, exports, module){
+define(["require", "exports", "module", "js!tangram"], function(require, exports, module){
 /**
  * 对webspeed平台的PDC进行包装，方便在er项目里面调用.
  * @constructor

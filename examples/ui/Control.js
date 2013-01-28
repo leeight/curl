@@ -14,8 +14,8 @@
  * @description
  * ui控件的基类
  **/
-define(['base/EventDispatcher', 'er/template'],
-function(EventDispatcher, template){
+define(['base/EventDispatcher', 'er/template', 'require', 'js!tangram'],
+function(EventDispatcher, template, require){
 /**
  * ui的生命周期定义
  * @enum {number}
@@ -448,7 +448,7 @@ Control.prototype.instChildrenFromMain = function() {
     if (!this.main) {
         return;
     }
-    util.buildControlTree(this.main, this);
+    require('ui/util').buildControlTree(this.main, this);
 };
 
 /**
@@ -459,9 +459,9 @@ Control.prototype.instChildrenFromTpl = function() {
         return;
     }
 
-    var html = er.template.getMerged(this.view);
+    var html = template.getMerged(this.view);
     this.main.innerHTML = html;
-    util.buildControlTree(this.main, this);
+    require('ui/util').buildControlTree(this.main, this);
 };
 
 /**

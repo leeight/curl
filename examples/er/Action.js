@@ -7,8 +7,8 @@
  * author:  yuanhongliang
  * date:    $Date: 2011-05-05 00:19:39 +0800 (Thu, 05 May 2011) $
  */
-define(['base/BaseModel', 'base/RemoteListDataSource', 'er/locator', 'exports'],
-function(BaseModel, RemoteListDataSource, locator, exports){
+define(['base/BaseModel', 'base/RemoteListDataSource', 'er/locator', 'ui/util', 'require', 'exports', 'js!tangram'],
+function(BaseModel, RemoteListDataSource, locator, util, require, exports){
 /**
  * Action
  * @constructor
@@ -103,7 +103,7 @@ Action.prototype.initView = function() {
     var me = this,
         dom = baidu.g(me.argMap.domId),
         view = me.getView(),
-        page = ui.util.createPage(view, dom, me.argMap.type === 'popup');
+        page = util.createPage(view, dom, me.argMap.type === 'popup');
 
     me.page = page;
     me.beforeInit(page);

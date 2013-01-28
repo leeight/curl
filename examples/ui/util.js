@@ -13,34 +13,26 @@
  * @version $Revision: 4610 $
  * @description
  **/
-
-goog.require('Validator');
-
-goog.require('ui.InputControl');
-goog.require('ui.Page');
-
-goog.provide('ui.util');
-goog.provide('ui.util.validate');
-
+define(function(require, exports, module){
 /**
  * @constructor
  */
-ui.Lib = function() {
+var util = {
   /**
    * @type {?ui.Page}
    */
-  this.pageMain = null;
+  pageMain: null,
 
   /**
    * @type {?ui.Page}
    */
-  this.pagePopups = {};
+  pagePopups: {},
 
   /**
    * @type {number}
    * @private
    */
-  this._uniqueId = 0;
+  _uniqueId: 0
 };
 
 /**
@@ -51,7 +43,7 @@ ui.Lib = function() {
  * @deprecated
  * @return {ui.Control}
  */
-ui.Lib.prototype.create = function(type, options, main) {
+util.create = function(type, options, main) {
   options.type = type;
   return this.createControl(options, main);
 };
@@ -63,8 +55,9 @@ ui.Lib.prototype.create = function(type, options, main) {
  * @param {boolean} isPopup 是否嵌入popup中.
  * @return {ui.Page}
  */
-ui.Lib.prototype.createPage = function(view, main, isPopup) {
-    var page = new ui.Page({
+util.createPage = function(view, main, isPopup) {
+    var ctor = require('ui/Page'),
+        page = new ctor({
         view: view,
         main: main,
         autoState: false
@@ -91,7 +84,7 @@ ui.Lib.prototype.createPage = function(view, main, isPopup) {
  * @param {Element} main 控件最终render到main内部.
  * @return {ui.Control}
  */
-ui.Lib.prototype.createControl = function(attrs, main) {
+util.createControl = function(attrs, main) {
     var refer = {},
         key, id, attrValue;
 
@@ -122,8 +115,7 @@ ui.Lib.prototype.createControl = function(attrs, main) {
         attrs.main = main;
     }
 
-    var clazz = /** @type {Function} */ (baidu.getObjectByName(attrs.type, ui) ||
-                baidu.getObjectByName(attrs.type, window));
+    var clazz = /** @type {Function} */ (require('ui/' + attrs.type));
     if (!clazz) {
         throw "Can't find constructor for [ui." + attrs.type + '] or [' + attrs.type + ']';
     }
@@ -142,7 +134,7 @@ ui.Lib.prototype.createControl = function(attrs, main) {
  * @param {Element} domParent 包含html片段的dom父节点.
  * @param {ui.Control} ctrlParent 父控件，构造出的所有控件都是它的子孙.
  */
-ui.Lib.prototype.buildControlTree = function(domParent, ctrlParent) {
+util.buildControlTree = function(domParent, ctrlParent) {
     if (!domParent || !domParent.childNodes ||
         !ctrlParent || !ctrlParent.addChild) {
         return;
@@ -172,7 +164,7 @@ ui.Lib.prototype.buildControlTree = function(domParent, ctrlParent) {
  * @param {string} attrStr ui属性字符串.
  * @return {Object}
  */
-ui.Lib.prototype.parseAttrStr = function(attrStr) {
+util.parseAttrStr = function(attrStr) {
     var attrs = {},
         attrArr = attrStr.split(';'),
         attrArrLen = attrArr.length,
@@ -209,7 +201,7 @@ ui.Lib.prototype.parseAttrStr = function(attrStr) {
  * @param {ui.Page=} opt_page 包含该控件Page.
  * @return {?ui.Control}
  */
-ui.Lib.prototype.get = function(domId, opt_page) {
+util.get = function(domId, opt_page) {
     var ids = domId.split('_'),
         popup = this.pagePopups[ids[0]],
         control = opt_page || popup || this.pageMain,
@@ -226,7 +218,7 @@ ui.Lib.prototype.get = function(domId, opt_page) {
 /**
  * 析构函数
  */
-ui.Lib.prototype.dispose = function() {
+util.dispose = function() {
     if (this.pageMain) {
         this.pageMain.dispose();
     }
@@ -239,7 +231,7 @@ ui.Lib.prototype.dispose = function() {
  * @param {HTMLElement} container 要查找的容器元素.
  * @return {Object}
  */
-ui.Lib.prototype.getControlsByContainer = function(container) {
+util.getControlsByContainer = function(container) {
     var els = container.getElementsByTagName('*'),
         len = els.length,
         controlId,
@@ -263,13 +255,14 @@ ui.Lib.prototype.getControlsByContainer = function(container) {
  * @param {HTMLElement} container 容器元素.
  * @param {boolean} disabled disable状态.
  */
-ui.Lib.prototype.disableFormByContainer = function(container, disabled) {
+util.disableFormByContainer = function(container, disabled) {
     var controls = this.getControlsByContainer(container),
-        key, control;
+        key, control,
+        ctor = require('ui/InputControl');
 
     for (var i = 0; i < controls.length; i++) {
         control = controls[i];
-        if (control instanceof ui.InputControl) {
+        if (control instanceof ctor) {
             if (disabled) {
                 control.disable();
             } else {
@@ -285,20 +278,18 @@ ui.Lib.prototype.disableFormByContainer = function(container, disabled) {
  * @param {HTMLElement} ctrl 容器元素.
  * @param {HTMLElement} wrap disable状态.
  */
-ui.Lib.prototype.appendTo = function(ctrl, wrap) {
+util.appendTo = function(ctrl, wrap) {
     var main = document.createElement('div');
     wrap.appendChild(main);
     ctrl.main = main;
 };
 
-ui.util = new ui.Lib();
-ui.util.validate = Validator;
-
 baidu.on(window, 'unload', function() {
-    ui.util.dispose();
+    util.dispose();
 });
 
 
+return util;
 
 
 
@@ -314,5 +305,5 @@ baidu.on(window, 'unload', function() {
 
 
 
-
+});
 /* vim: set ts=4 sw=4 sts=4 tw=100 noet: */

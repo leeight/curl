@@ -14,7 +14,8 @@
  * @description
  * er.controller
  **/
-define(['er/base', 'er/config', 'er/locator'], function(base, config, locator){
+define(['er/base', 'er/config', 'er/locator'],
+function(base, config, locator){
 /**
  * 控制器负责将对应的path转向给相应的action对象处理.
  */
@@ -305,7 +306,10 @@ controller.init = function() {
  */
 controller.findAction = function(actionConfig) {
   var propPath = actionConfig.action;
-  return /** @type {Action} */ (base.getObjectByName(propPath));
+  if (base.isFunction(propPath)) {
+    return propPath;
+  }
+  throw new Error("Should not reach here.");
 };
 
 
